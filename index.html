@@ -295,7 +295,8 @@ function aiChoose(G, rand=Math.random){
   const total = T.pts + max.pts, goal = G.target || OUT;
   let stop = false;
   if(p.opened || total >= OPEN){
-    if(G.final) stop = p.score + total > leadOthers(G,p);
+    // ultimo giro: chi insegue si ferma appena passa in testa; chi si è chiamato fuori gioca normale
+    if(G.final && G.final.by !== G.cur) stop = p.score + total > leadOthers(G,p);
     else if(smart) stop = total >= STOP_AT[cont.left || 5] * ai.greed || (p.score <= goal && p.score + total > goal && total >= 300);
     else stop = total >= T.naive;
   }
@@ -547,8 +548,16 @@ function render(){
 }
 
 // ---------- Partita libera: scelta giocatori ----------
+// avversari automatici per la partita libera: il capotavola di ogni livello della storia
+const CPUS = LEVELS.map((L,i) => ({id:'cpu-'+i, name:L.opp[0][0], emoji:L.opp[0][1], lv:i}));
+const anyPlayer = id => S.roster.find(r => r.id === id) || CPUS.find(c => c.id === id);
 function viewSetup(){
-  const sel = S.pick;
+  S.pick = S.pick.filter(anyPlayer);
+  const sel = S.pick, hasCpu = sel.some(id => id.startsWith('cpu-'));
+  const chip = (p, extra='') => {
+    const i = sel.indexOf(p.id);
+    return `<button class="chip ${i>=0?'on':''}" data-act="pick" data-id="${p.id}" aria-pressed="${i>=0}">${av(p)}${esc(p.name)}${extra}${i>=0?`<span class="ord">${i+1}</span>`:''}${p.preset || p.lv != null ?'':`<span class="x" data-act="delp" data-id="${p.id}" role="button" aria-label="Elimina ${esc(p.name)}">×</span>`}</button>`;
+  };
   $main.innerHTML = `
   <div class="panel">
     <div class="hero">
@@ -556,17 +565,19 @@ function viewSetup(){
       <div><h2>Nuova partita</h2><p class="sub">Tocca i giocatori nell'ordine in cui tirano. Chi arriva oltre ${fmt(S.target)} punti può chiamarsi fuori.</p></div>
     </div>
     ${targetRow()}
-    <div class="chips">${S.roster.map(p => {
-      const i = sel.indexOf(p.id);
-      return `<button class="chip ${i>=0?'on':''}" data-act="pick" data-id="${p.id}" aria-pressed="${i>=0}">${av(p)}${esc(p.name)}${i>=0?`<span class="ord">${i+1}</span>`:''}${p.preset?'':`<span class="x" data-act="delp" data-id="${p.id}" role="button" aria-label="Elimina ${esc(p.name)}">×</span>`}</button>`;
-    }).join('')}</div>
+    <div class="chips">${S.roster.map(p => chip(p)).join('')}</div>
     <form class="addrow" id="addForm">
       <input id="newName" maxlength="16" placeholder="Aggiungi un giocatore" autocomplete="off">
       <button class="btn ghost" type="submit">Aggiungi</button>
     </form>
+    <h3 style="margin-top:20px">Computer</h3>
+    <p class="sub">Aggiungili al tavolo come gli altri giocatori. Più stelle hanno, più sono forti.</p>
+    <div class="chips">${CPUS.map(c => chip(c, ` <span class="stars" style="font-size:12px" aria-label="forza ${c.lv+1} su 5">${'★'.repeat(c.lv+1)}</span>`)).join('')}</div>
+    ${hasCpu ? `<div class="setrow"><span class="k">Turni dei computer</span>
+      <div class="seg"><button data-act="speed" data-f="0" aria-pressed="${!S.aiFast}">Con calma</button><button data-act="speed" data-f="1" aria-pressed="${S.aiFast}">Veloci</button></div></div>` : ''}
     <div class="startrow">
       <button class="btn gold" data-act="start" ${sel.length ? '' : 'disabled'}>Si gioca! <small>${sel.length} ${sel.length===1?'giocatore':'giocatori'}</small></button>
-      <span class="hint">${sel.length ? 'Comincia ' + esc(S.roster.find(p => p.id === sel[0])?.name) : 'Scegli almeno un giocatore'}</span>
+      <span class="hint">${sel.length ? 'Comincia ' + esc(anyPlayer(sel[0]).name) : 'Scegli almeno un giocatore'}</span>
     </div>
   </div>`;
   document.getElementById('addForm').onsubmit = e => {
@@ -646,7 +657,11 @@ function startMano(pid, step){
 
 // ---------- Partita ----------
 function startGame(){
-  makeGame(S.pick.map(id => { const p = S.roster.find(r => r.id === id); return {id, name:p.name, emoji:p.emoji, score:0, opened:false, cacchee:0, maxLoss:0}; }), {});
+  makeGame(S.pick.filter(anyPlayer).map(id => {
+    const p = anyPlayer(id), q = {id, name:p.name, emoji:p.emoji, score:0, opened:false, cacchee:0, maxLoss:0};
+    if(p.lv != null) q.ai = LEVELS[p.lv].ai;
+    return q;
+  }), {});
 }
 function makeGame(players, extra){
   S.G = Object.assign({players, cur:0, final:null, over:false, log:[], turn:null, bigPoop:null, target:S.target || OUT}, extra);
@@ -697,7 +712,7 @@ function viewGame(){
 
   $main.innerHTML = `
   <div class="board">${G.players.map((q,i) => `
-    <div class="pl ${i===G.cur?'now':''} ${G.final && G.final.by===i?'out':''}">
+    <div class="pl ${i===G.cur?'now':''} ${G.final && G.final.by===i && i!==G.cur?'out':''}">
       ${av(q)}
       <div class="info"><span class="nm">${esc(q.name)}</span>
         <span class="sc">${fmt(q.score)}</span>
@@ -810,7 +825,8 @@ function callOut(){
   const G = S.G; G.final = {by:G.cur};
   log('si chiama fuori', fmt(cp().score), 'good');
   sndTone([392,523,392,523], .14);
-  nextTurn();
+  // chi si chiama fuori fa il primo tiro dell'ultimo giro
+  save(); render(); toast(`Ultimo giro! Comincia ${cp().name}`);
 }
 function finishGame(){
   const G = S.G; G.over = true;
@@ -843,7 +859,10 @@ function aiGo(){
 function aiAct(){
   const G = S.G; if(!G || G.over || busy || !cp().ai) return;
   const T = G.turn;
-  if(!T.roll){ if(aiCallOut(G)) return callOut(); return roll(); }
+  if(!T.roll){
+    if(aiCallOut(G)){ callOut(); aiTimer = setTimeout(() => { if(S.G === G && !busy) roll(); }, S.aiFast ? 500 : 1300); return; }
+    return roll();
+  }
   const d = aiChoose(G);
   T.sel = d.idx; render();
   aiTimer = setTimeout(() => { if(S.G === G && !busy) d.stop ? bank() : roll(); }, S.aiFast ? 400 : 1000);
@@ -935,7 +954,7 @@ function showRules(){
       <li>Se riesci a bloccare tutti e 5 i dadi, li rilanci tutti e tieni i punti.</li>
       <li>Puoi fermarti quando vuoi e segnare i punti del turno.</li>
       <li>Per <b>aprire</b> (la prima volta in ogni partita) devi segnare almeno ${OPEN} punti in un solo turno.</li>
-      <li>Oltre ${fmt(OUT)} punti (o il punteggio scelto prima della partita) puoi <b>chiamarti fuori</b> prima di tirare: gli altri fanno un ultimo turno a testa e poi vince chi ha più punti.</li>
+      <li>Oltre ${fmt(OUT)} punti (o il punteggio scelto prima della partita) puoi <b>chiamarti fuori</b> prima di tirare. Comincia l'ultimo giro: tiri tu per primo, poi gli altri fanno un ultimo turno a testa e vince chi ha più punti.</li>
     </ul>
     <h3>Modalità storia</h3>
     <ul>
@@ -976,7 +995,7 @@ document.addEventListener('click', e => {
     case 'clover': { const st = heroStory(); st.pw.clover--; cp().opened = true; log('usa il quadrifoglio e apre', '🍀', 'good'); toast('Quadrifoglio: hai aperto!'); save(); render(); break; }
     case 'saveroll': savePoop('roll'); break;
     case 'savefix': savePoop('fix'); break;
-    case 'callout': ask('Ti chiami fuori?', `${esc(cp().name)} non tira più. Gli altri giocatori fanno un ultimo turno a testa, poi la partita finisce.`, 'Mi chiamo fuori', callOut); break;
+    case 'callout': ask('Ti chiami fuori?', `Comincia l'ultimo giro: ${esc(cp().name)} tira per primo, poi gli altri fanno un ultimo turno a testa e la partita finisce.`, 'Mi chiamo fuori', callOut); break;
     case 'tiroroll': audio(); tiroRoll(); break;
     case 'tirodone': tiroDone(); break;
     case 'rules': showRules(); break;

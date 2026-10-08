@@ -19,7 +19,7 @@ Su questo PC non ci sono git, Python e Node. Per provare la pagina in automatico
 - Se si bloccano tutti e 5 i dadi, si rilanciano tutti e 5 e i punti restano.
 - Ci si può fermare quando si vuole e segnare i punti.
 - **Apertura**: la prima volta in ogni partita servono almeno 600 punti in un turno (`OPEN`).
-- **Chiamarsi fuori**: oltre il punteggio scelto (5000 di default, `OUT`; in partita è `G.target`), prima di tirare. Gli altri fanno un ultimo turno a testa, poi vince chi ha più punti. Chi si chiama fuori non tira più.
+- **Chiamarsi fuori**: oltre il punteggio scelto (5000 di default, `OUT`; in partita è `G.target`), prima di tirare. Da lì comincia l'ultimo giro: **chi si chiama fuori fa il primo tiro** (il suo turno normale), poi gli altri fanno un ultimo turno a testa, poi vince chi ha più punti. La partita finisce quando il turno torna a chi si è chiamato fuori.
 - **Poker e cinque uguali** (confermato dall'utente): contano come tris più gli Assi o le Q in più.
   - 4 Assi = 800.
   - 5 K: si blocca il tris (600) e si rilanciano gli altri due. I dadi in più di K, J, 10 e 9 non si possono bloccare.
@@ -62,7 +62,7 @@ Su questo PC non ci sono git, Python e Node. Per provare la pagina in automatico
 ## Modello dati
 
 - `S.roster`: giocatori `{id, name, emoji, preset?}`. Quelli precaricati sono gli stessi dello Yahtzee: Ale, Laura, Roby, Jo, Sere, Fra, Steu, Monica.
-- `S.pick`: ordine dei giocatori della partita libera.
+- `S.pick`: ordine dei giocatori della partita libera. Può contenere anche i computer (`cpu-0`…`cpu-4`, definiti in `CPUS`): sono il capotavola di ogni livello della storia, con gli stessi parametri `ai`. Nella partita libera non ci sono aiuti né monete.
 - `S.target`: punteggio per chiamarsi fuori (2000, 3000, 5000, 8000 o 10000).
 - `S.G`: partita in corso, oppure `null`.
   - Campi: `{players, cur, final:{by}|null, over, log, turn, bigPoop, target, story?, mini?, fixMode?}`.
@@ -85,11 +85,11 @@ Simulazione (400 partite per riga, fino a 5000 punti), contro un giocatore umano
 
 | Livello | 1 avversario | 2 avversari | 3 avversari |
 |---|---|---|---|
-| 1 Osteria | 67% | 56% | 48% |
-| 2 Bar | 60% | 49% | 43% |
-| 3 Sagra | 54% | 49% | 33% |
-| 4 Casinò | 44% | 28% | 22% |
-| 5 Re Caccone | 35% | 19% | 14% |
+| 1 Osteria | 69% | 51% | 47% |
+| 2 Bar | 62% | 48% | 41% |
+| 3 Sagra | 57% | 40% | 31% |
+| 4 Casinò | 42% | 24% | 19% |
+| 5 Re Caccone | 32% | 22% | 13% |
 
 Una partita a 5000 dura circa 16-21 giri; a 2000 circa 7-9 giri. Il gioco è molto fortunoso, quindi le differenze tra i livelli si ottengono soprattutto con `luck`. **Se cambi un parametro, risimula**: estrai il blocco LOGICA più `LEVELS` in una pagina di prova ed eseguila con Edge headless.
 
